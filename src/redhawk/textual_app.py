@@ -455,6 +455,17 @@ class AgentStatusPanel(Vertical):
 # Chat panel
 # ---------------------------------------------------------------------------
 
+class ClickableCollapsible(Collapsible):
+    """Collapsible that toggles on click anywhere (not just the toggle icon)."""
+
+    def on_click(self, event) -> None:
+        self.collapsed = not self.collapsed
+
+
+# ---------------------------------------------------------------------------
+# Chat panel
+# ---------------------------------------------------------------------------
+
 class ChatPanel(Vertical):
     """Main chat area with streaming messages and collapsible cards."""
 
@@ -472,26 +483,23 @@ class ChatPanel(Vertical):
         await msgs.mount(widget)
         msgs.scroll_end()
 
-    async def start_thinking(self) -> Static:
-        """Mount a new collapsible thinking block, return the content widget.
-        Uses CSS classes (not IDs) so multiple blocks can coexist."""
+    async def start_thinking(self) -> tuple[Static, ClickableCollapsible]:
+        """Mount a new collapsible thinking block. Returns (content_widget, collapsible)."""
         msgs = self.query_one("#chat-messages", VerticalScroll)
         content = Static("", classes="thinking-content")
-        collapsible = Collapsible(content, title="thinking...", classes="thinking-block")
+        collapsible = ClickableCollapsible(content, title="thinking...", classes="thinking-block")
         await msgs.mount(collapsible)
         msgs.scroll_end()
-        return content
+        return content, collapsible
 
     def update_thinking(self, content_widget: Static, full_text: str) -> None:
         """Set the full thinking text on the widget."""
         content_widget.update(full_text)
 
-    def finalize_thinking(self, content_widget: Static, title: str) -> None:
+    def finalize_thinking(self, collapsible: ClickableCollapsible, title: str) -> None:
         """Mark thinking complete and update the title."""
-        collapsible = content_widget.parent
-        if isinstance(collapsible, Collapsible):
-            collapsible.collapsed = True
-            collapsible.title = title
+        collapsible.collapsed = True
+        collapsible.title = title
 
     async def add_tool_call(
         self, call_id: str, name: str, args: dict,
@@ -506,7 +514,7 @@ class ChatPanel(Vertical):
             title += f" {preview}"
         body_text = full if full else "(no args)"
         body = Static(body_text, id=f"tool-body-{call_id}")
-        collapsible = Collapsible(body, title=title, id=f"tool-{call_id}")
+        collapsible = ClickableCollapsible(body, title=title, id=f"tool-{call_id}")
         await msgs.mount(collapsible)
         msgs.scroll_end()
         return collapsible
@@ -606,7 +614,25 @@ Screen {
 }
 
 #chat-messages > * {
-    margin: 0 0 1 0;
+    margin: 0;
+}
+
+.thinking-content {
+    margin: 0;
+    padding: 0;
+}
+
+.thinking-block {
+    margin: 0;
+    padding: 0;
+}
+
+.thinking-block CollapsibleTitle {
+    background: $boost;
+    color: $text;
+    padding: 0 1;
+    height: 1;
+    content-align: center middle;
 }
 
 #chat-input {
@@ -616,12 +642,25 @@ Screen {
 }
 
 Collapsible {
-    margin: 0 0 1 0;
+    margin: 0;
+    padding: 0;
+    border: none;
+    height: auto;
 }
 
-Collapsible > .collapsible--title {
+Collapsible CollapsibleTitle {
     background: $boost;
+    color: $text;
     padding: 0 1;
+    height: 1;
+    border: none;
+    text-align: left;
+    content-align: left middle;
+}
+
+Collapsible Contents {
+    padding: 0 2;
+    border: none;
 }
 
 #status-bar {
@@ -655,7 +694,9 @@ class RedhawkApp(App):
     _agent_history: dict[str, dict] = {}  # name -> {task, elapsed, time}
     _selected_agent: str | None = None
     _thinking_text: str = ""
+    _thinking_start: float = 0.0
     _current_thinking: Static | None = None
+    _current_thinking_block: ClickableCollapsible | None = None
     _need_new_thinking: bool = False
 
     # ---- lifecycle ----
@@ -716,12 +757,8 @@ class RedhawkApp(App):
         await chat.add_user_message(prompt)
         inp = _history + [{"role": "user", "content": prompt}]
 
-        # Remove old thinking blocks from prior turn
-        msgs_container = chat.query_one("#chat-messages", VerticalScroll)
-        for old in msgs_container.query(".thinking-block"):
-            await old.remove()
-
-        self._current_thinking = await chat.start_thinking()
+        self._current_thinking, self._current_thinking_block = await chat.start_thinking()
+        self._thinking_start = time.time()
         self._thinking_text = ""
         self._need_new_thinking = False
         final_msgs = inp
@@ -748,9 +785,11 @@ class RedhawkApp(App):
                     if not agent_name:
                         # Coordinator — if a tool just completed, start fresh block
                         if self._need_new_thinking:
-                            chat.finalize_thinking(self._current_thinking, "\u2705 thinking")
+                            elapsed = time.time() - self._thinking_start
+                            chat.finalize_thinking(self._current_thinking_block, f"\u601d\u8003 {elapsed:.1f}s")
                             chat.update_thinking(self._current_thinking, self._thinking_text)
-                            self._current_thinking = await chat.start_thinking()
+                            self._current_thinking, self._current_thinking_block = await chat.start_thinking()
+                            self._thinking_start = time.time()
                             self._thinking_text = ""
                             self._need_new_thinking = False
                         if reasoning:
@@ -768,10 +807,17 @@ class RedhawkApp(App):
                 if msgs:
                     final_msgs = msgs
 
-        # Finalize — keep all thinking blocks, they contain genuine reasoning
-        if self._current_thinking and self._thinking_text:
-            chat.finalize_thinking(self._current_thinking, "\u2705 thinking")
-            chat.update_thinking(self._current_thinking, self._thinking_text)
+        # Finalize last thinking block
+        if self._current_thinking:
+            elapsed = time.time() - self._thinking_start
+            if self._thinking_text:
+                chat.finalize_thinking(self._current_thinking_block, f"\u601d\u8003 {elapsed:.1f}s")
+                chat.update_thinking(self._current_thinking, self._thinking_text)
+            else:
+                # No reasoning text — remove empty block
+                if self._current_thinking_block:
+                    await self._current_thinking_block.remove()  # type: ignore[union-attr]
+                    self._current_thinking_block = None
 
         _history = final_msgs
         await chat.add_assistant_message(
@@ -782,15 +828,12 @@ class RedhawkApp(App):
 
     async def on_tool_call_start(self, event: ToolCallStart) -> None:
         # Flush or remove the current thinking block
-        if self._current_thinking:
+        if self._current_thinking_block:
             if self._thinking_text:
-                self._current_thinking.update(self._thinking_text)
+                self._current_thinking.update(self._thinking_text)  # type: ignore[union-attr]
             else:
-                # No reasoning text before this tool — remove empty block
-                collapsible = self._current_thinking.parent
-                if collapsible:
-                    await collapsible.remove()  # type: ignore[union-attr]
-                self._current_thinking = None
+                await self._current_thinking_block.remove()  # type: ignore[union-attr]
+                self._current_thinking_block = None
 
         if event.is_task:
             # Coordinator dispatching a sub-agent via `task`
