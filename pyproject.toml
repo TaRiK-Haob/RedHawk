@@ -1,0 +1,20 @@
+[project]
+name = "tinyagent"
+version = "0.1.0"
+description = "A minimal security red-team agent built on deepagents."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "deepagents>=0.6.12",
+    "langchain-deepseek>=1.1.0",
+    "langchain-mcp-adapters>=0.3.0",
+    "python-dotenv>=1.2.2",
+    "textual>=8.2.8",
+]
+
+[project.scripts]
+tinyagent = "tinyagent.__main__:run"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
