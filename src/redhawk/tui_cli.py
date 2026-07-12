@@ -3,6 +3,7 @@
 import asyncio
 
 from redhawk import build_agent
+from redhawk.langfuse import callback_config, flush as langfuse_flush
 from redhawk.mcp_tools import init_mcp_tools
 from redhawk.tracer import set_tools
 from redhawk.workspace import ensure_workspace
@@ -18,17 +19,22 @@ def main() -> None:
     print(f"workspace: {workspace}\n")
 
     messages: list = []
-    while True:
-        try:
-            user_input = input("you > ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\nbye.")
-            break
-        if not user_input:
-            continue
-        if user_input.lower() in {"exit", "quit"}:
-            break
-        messages.append({"role": "user", "content": user_input})
-        result = agent.invoke({"messages": messages})
-        messages = result["messages"]
-        print(f"\nagent > {messages[-1].content}\n")
+    try:
+        while True:
+            try:
+                user_input = input("you > ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print("\nbye.")
+                break
+            if not user_input:
+                continue
+            if user_input.lower() in {"exit", "quit"}:
+                break
+            messages.append({"role": "user", "content": user_input})
+            result = agent.invoke(
+                {"messages": messages}, config=callback_config()
+            )
+            messages = result["messages"]
+            print(f"\nagent > {messages[-1].content}\n")
+    finally:
+        langfuse_flush()

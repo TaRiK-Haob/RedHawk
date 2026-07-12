@@ -27,6 +27,8 @@ from textual.widgets import (
     TextArea,
 )
 
+from redhawk.langfuse import callback_config, flush as langfuse_flush
+
 
 class ChatInput(TextArea):
     """Multi-line input: Enter submits, Ctrl+J inserts a newline."""
@@ -720,6 +722,10 @@ class RedhawkApp(App):
         await init_mcp_tools()
         _get_agent(self)  # builds agent and calls ToolTrackerMiddleware.set_app(self)
 
+    def on_unmount(self) -> None:
+        # Flush pending Langfuse trace events before the process exits.
+        langfuse_flush()
+
     def on_chat_input_submitted(self, event: ChatInput.Submitted) -> None:
         prompt = event.text.strip()
         if not prompt:
@@ -767,6 +773,7 @@ class RedhawkApp(App):
             {"messages": inp},
             stream_mode=["messages", "values"],
             subgraphs=True,
+            config=callback_config(),
         ):
             ns, mode, data = event
             agent_name = _ns_to_name(ns)
