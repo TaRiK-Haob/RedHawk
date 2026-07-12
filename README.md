@@ -1,4 +1,4 @@
-# tinyAgent
+# redhawk
 
 基于 [deepagents](https://github.com/langchain-ai/deepagents) 构建的轻量安全红队智能体。
 这是基础智能体循环——可扩展至完整的攻击面覆盖（Web/二进制漏洞挖掘、漏洞利用、多阶段渗透、云安全、防御规避）。

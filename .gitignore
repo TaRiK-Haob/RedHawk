@@ -15,6 +15,9 @@ build/
 .langgraph/
 deepagents/
 
+# Developer-only docs
+AGENTS.md
+
 # Runtime workspace
 .redhawk/
 .slim/
