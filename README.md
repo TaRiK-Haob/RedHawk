@@ -1,18 +1,16 @@
 # tinyAgent
 
-A minimal security red-team agent built on [deepagents](https://github.com/langchain-ai/deepagents).
-This is the foundational agent loop — extensible toward full offensive-security
-coverage (web/binary vuln mining, exploitation, multi-stage pentest, cloud, evasion).
+基于 [deepagents](https://github.com/langchain-ai/deepagents) 构建的轻量安全红队智能体。
+这是基础智能体循环——可扩展至完整的攻击面覆盖（Web/二进制漏洞挖掘、漏洞利用、多阶段渗透、云安全、防御规避）。
 
-## Quick start
+## 快速开始
 
 ```bash
-# deps already added via: uv add deepagents langchain-deepseek langchain-mcp-adapters python-dotenv textual
-uv run python main.py        # Textual TUI (default)
-uv run python main.py --cli  # inline REPL fallback
+uv run python main.py        # Textual TUI（默认）
+uv run python main.py --cli  # 命令行 REPL 回退
 ```
 
-Configure the model in `.env` (OpenAI-compatible endpoint):
+在 `.env` 中配置模型（OpenAI 兼容接口）：
 
 ```
 OPENAI_API_KEY=...
@@ -20,87 +18,76 @@ OPENAI_API_BASE_URL=https://api.deepseek.com
 OPENAI_API_MODEL=deepseek-v4-flash
 ```
 
-Then type objectives, e.g. `recon 10.10.14.5 and report the open services`.
+然后输入目标，例如 `扫描 10.10.14.5 并报告开放服务`。
 
-## Architecture
+## 架构
 
 ```
-main.py              # convenience launcher (delegates to package entry point)
+main.py              # 便捷启动器（委托到包入口）
 src/
 └── tinyagent/
-    ├── __init__.py      # exports build_agent()
-    ├── __main__.py      # package entry point (python -m tinyagent)
-    ├── config.py        # loads .env, builds the LLM client (ChatDeepSeek)
-    ├── prompts.py       # system prompts (coordinator + 7 sub-agents)
-    ├── builder.py       # assembles the agent + sub-agents  <-- EXTENSION POINT
-    ├── textual_app.py   # Textual TUI (chat panel, sidebar, middleware)
-    ├── tui_cli.py       # CLI fallback REPL
-    ├── tracer.py        # CLI tool-call tracing middleware
-    ├── workspace.py     # `.redhawk/` workspace setup + CompositeBackend
-    ├── memory.py        # cross-session persistent memory
-    └── mcp_tools.py     # Tavily + Exa web search tool loader
+    ├── __init__.py      # 导出 build_agent()
+    ├── __main__.py      # 包入口（python -m tinyagent）
+    ├── config.py        # 加载 .env，构建 LLM 客户端（ChatDeepSeek）
+    ├── prompts.py       # 系统提示词（协调器 + 7 个子代理）
+    ├── builder.py       # 组装智能体 + 子代理  <-- 扩展点
+    ├── textual_app.py   # Textual TUI（聊天面板、侧边栏、中间件）
+    ├── tui_cli.py       # CLI 回退 REPL
+    ├── tracer.py        # CLI 工具调用追踪中间件
+    ├── workspace.py     # `.redhawk/` 工作区设置 + CompositeBackend
+    ├── memory.py        # 跨会话持久记忆
+    └── mcp_tools.py     # Tavily + Exa 网络搜索工具加载器
 ```
 
-The coordinator agent plans and delegates to specialists via deepagents'
-built-in `task` tool. Each specialist runs in an isolated context window.
-The backend provides the built-in toolset: file tools (ls/read_file/
-write_file/edit_file/glob/grep), the shell `execute` tool, and `task`.
+协调器智能体通过 deepagents 内置的 `task` 工具规划任务并委派给专家子代理。
+每个专家运行在独立的上下文中。后端提供内置工具集：文件工具（ls/read_file/
+write_file/edit_file/glob/grep）、shell `execute` 工具以及 `task`。
 
-## Workspace (`.redhawk/`)
+## 工作区（`.redhawk/`）
 
-At startup the agent creates a `.redhawk/` directory in the current working
-directory as its workspace. **It is the working directory for all tools**:
+启动时，智能体会在当前工作目录下创建 `.redhawk/` 目录作为工作区。**所有工具均以该目录为工作目录**：
 
-- Both file tools (ls/read_file/write_file/edit_file/glob/grep) and the shell
-  `execute` tool run with `.redhawk/` as cwd, so relative paths land there.
-  Paths are used as-is (`virtual_mode=False`) — this keeps file tools and
-  shell tools on the same real-path basis, avoiding path nesting.
-- The workspace absolute path is injected into the coordinator prompt so the
-  LLM writes to correct locations.
-- Note: this is a working-directory convention, not a hard sandbox — the
-  shell `execute` tool is unrestricted by design (a pentest agent must reach
-  external targets).
+- 文件工具（ls/read_file/write_file/edit_file/glob/grep）和 shell `execute` 工具均以 `.redhawk/` 为当前目录，因此相对路径会落在其中。
+  路径按原样使用（`virtual_mode=False`）——这使得文件工具和 shell 工具基于相同的真实路径，避免路径嵌套。
+- 工作区的绝对路径会被注入到协调器提示词中，确保 LLM 写入正确位置。
+- 注意：这仅是工作目录约定，并非硬沙箱——shell `execute` 工具在设计上不受限制（渗透测试智能体必须能够访问外部目标）。
 
-## Memory (cross-session)
+## 记忆（跨会话）
 
-The agent has persistent long-term memory at `.redhawk/memories/AGENTS.md`,
-exposed as a virtual `/memories/` filesystem via the backend. It is loaded
-into the system prompt at startup, so the agent recalls prior knowledge
-across **separate runs** (engagement findings, payload notes, operator
-preferences). The agent updates it itself via `edit_file`, and you can edit
-the markdown file by hand at any time.
+智能体拥有持久化的长期记忆，存储在 `.redhawk/memories/AGENTS.md`，
+通过后端以虚拟 `/memories/` 文件系统的形式暴露。它在启动时被加载到系统提示词中，
+因此智能体能够在**不同运行之间**保持先验知识（渗透发现、payload 笔记、操作员偏好）。
+智能体通过 `edit_file` 自行更新记忆，你也可以随时手动编辑该 markdown 文件。
 
-Implementation: a `CompositeBackend` routes `/memories/` to a
-`FilesystemBackend` (real-disk markdown, zero extra deps) — chosen over a
-`StoreBackend` because persistence + human-readability matter more than
-multi-user namespacing for this single-user CLI.
+实现方式：`CompositeBackend` 将 `/memories/` 路由到
+`FilesystemBackend`（真实磁盘 markdown，零额外依赖）——相比 `StoreBackend`，
+对于单用户 CLI 工具，持久性和人类可读性比多用户命名空间更重要。
 
-## Adding a new security domain
+## 添加新的安全领域
 
-Two changes only:
+只需两步：
 
-1. Add a prompt in `src/tinyagent/prompts.py`: 
+1. 在 `src/tinyagent/prompts.py` 中添加提示词：
 
    ```python
-   BINARY_EXPLOIT_PROMPT = "You are a binary-exploitation specialist..."
+   BINARY_EXPLOIT_PROMPT = "你是一名二进制漏洞利用专家..."
    ```
 
-2. Append a dict in `src/tinyagent/builder.py`: 
+2. 在 `src/tinyagent/builder.py` 中追加一条字典：
 
    ```python
    SUBAGENTS = [
        ...,
        {
            "name": "binary-exploit",
-           "description": "Reverse-engineer binaries and find memory-corruption bugs.",
+           "description": "逆向二进制文件并发现内存损坏漏洞。",
            "system_prompt": BINARY_EXPLOIT_PROMPT,
        },
    ]
    ```
 
-That's it — the coordinator will now delegate to it automatically.
+完成——协调器会自动将任务委派给它。
 
-## Scope & safety
+## 范围与安全
 
-Intended only for targets you are explicitly authorized to test. The
-coordinator prompt enforces an authorization check before acting.
+仅限用于已获得明确授权的测试目标。协调器提示词在执行前强制执行授权检查。
