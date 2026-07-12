@@ -10,12 +10,12 @@ uv run python main.py        # Textual TUI（默认）
 uv run python main.py --cli  # 命令行 REPL 回退
 ```
 
-在 `.env` 中配置模型（OpenAI 兼容接口）：
+在 `.env` 中配置 DeepSeek 模型（使用 [langchain-deepseek](https://pypi.org/project/langchain-deepseek/) 的 `ChatDeepSeek`，而非通用 OpenAI 兼容接口）：
 
 ```
-OPENAI_API_KEY=...
-OPENAI_API_BASE_URL=https://api.deepseek.com
-OPENAI_API_MODEL=deepseek-v4-flash
+DEEPSEEK_API_KEY=...              # DeepSeek API key
+DEEPSEEK_API_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-v4-flash
 ```
 
 然后输入目标，例如 `扫描 10.10.14.5 并报告开放服务`。
